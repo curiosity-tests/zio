@@ -1,11 +1,29 @@
 name: CI
 
 env:
+  # The one variable that separates the arms: on baseline, action-checkout
+  # skips its Set up Chalk step entirely.
+  CHALK_ON: ${{ github.event_name == 'workflow_dispatch' && inputs.leg != 'baseline' }}
   JDK_JAVA_OPTIONS: -XX:+PrintCommandLineFlags -Xms2G -Xmx8G -Xss4M -XX:+UseG1GC -XX:ReservedCodeCacheSize=512M -XX:NonProfiledCodeHeapSize=256M # JDK_JAVA_OPTIONS is _the_ env. variable to use for modern Java
   SBT_OPTS: -XX:+PrintCommandLineFlags -Xms2G -Xmx8G -Xss4M -XX:+UseG1GC -XX:ReservedCodeCacheSize=512M -XX:NonProfiledCodeHeapSize=256M # Needed for sbt
   NODE_OPTIONS: --max_old_space_size=6144
 
 on:
+  workflow_dispatch:
+    inputs:
+      leg:
+        description: "baseline (uninstrumented) or instrumented (under chalk/curiosity)"
+        type: choice
+        options: [instrumented, baseline]
+        default: instrumented
+      profile:
+        description: "CrashOverride chalk profile"
+        type: string
+        default: curiosity-tests-racecar
+      racecar_run:
+        description: "racecar correlation token, echoed into the run name"
+        type: string
+        default: ""
   pull_request:
   push:
     branches:
@@ -17,8 +35,14 @@ on:
     types: [update-docs]
 
 concurrency:
-  group: ci-pr-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-pr-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}-${{ inputs.leg || 'push' }}-${{ inputs.racecar_run }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+run-name: "CI ${{ inputs.leg || 'push' }} ${{ inputs.racecar_run }}"
 
 jobs:
   lint:
@@ -27,9 +51,19 @@ jobs:
     if: ${{ ((github.event_name != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
     steps:
     - name: Checkout current branch
-      uses: actions/checkout@v7.0.1
+      uses: crashappsec/action-checkout@main
       with:
+        chalk: ${{ env.CHALK_ON }}
+        profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+        observables_continue_on_error: false
+        lfs: false
         ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+    - name: Assert instrumentation is live
+      if: env.CHALK_ON == 'true'
+      run: |
+        test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+        test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
     - name: Setup Java
       uses: actions/setup-java@v6.0.0
       with:
@@ -55,10 +89,20 @@ jobs:
         scala: ['2.12.x', '2.13.x', '3.x']
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v7.0.1
+        uses: crashappsec/action-checkout@main
         with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - name: Setup Java
         uses: actions/setup-java@v6.0.0
         with:
@@ -88,10 +132,20 @@ jobs:
     if: ${{ ((github.event_name != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
     steps:
       - name: Checkout Current Branch
-        uses: actions/checkout@v7.0.1
+        uses: crashappsec/action-checkout@main
         with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - name: Setup Java
         uses: actions/setup-java@v6.0.0
         with:
@@ -153,9 +207,19 @@ jobs:
         platform: ['JVM']
     steps:
     - name: Checkout current branch
-      uses: actions/checkout@v7.0.1
+      uses: crashappsec/action-checkout@main
       with:
+        chalk: ${{ env.CHALK_ON }}
+        profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+        observables_continue_on_error: false
+        lfs: false
         ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+    - name: Assert instrumentation is live
+      if: env.CHALK_ON == 'true'
+      run: |
+        test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+        test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
     - name: Setup Java
       uses: actions/setup-java@v6.0.0
       with:
@@ -216,9 +280,19 @@ jobs:
         java: ['11', '17', '25']
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v7.0.1
+        uses: crashappsec/action-checkout@main
         with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - name: Setup Java
         uses: actions/setup-java@v6.0.0
         with:
@@ -250,9 +324,19 @@ jobs:
         platform: ['JS', 'Native1', 'Native2']
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v7.0.1
+        uses: crashappsec/action-checkout@main
         with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - name: Install Boehm GC
         if: ${{ startsWith(matrix.platform, 'Native') }}
         run: sudo apt-get update && sudo apt-get install -y libgc-dev
@@ -289,9 +373,19 @@ jobs:
     if: github.event_name != 'pull_request'
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v7.0.1
+        uses: crashappsec/action-checkout@main
         with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
           fetch-depth: 0
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - name: Setup Java
         uses: actions/setup-java@v6.0.0
         with:
@@ -315,9 +409,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.1
+        uses: crashappsec/action-checkout@main
         with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
           fetch-depth: 0
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - uses: actions/download-artifact@v8
         with:
           name: website-artifact
@@ -334,9 +438,19 @@ jobs:
     if: ${{ ((github.event_name == 'repository_dispatch') && (github.event.action == 'update-docs')) }}
     steps:
       - name: Git Checkout
-        uses: actions/checkout@v7.0.1
+        uses: crashappsec/action-checkout@main
         with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
           ref: ${{ github.head_ref }}
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - name: Commit Changes
         run: |
           cd website
