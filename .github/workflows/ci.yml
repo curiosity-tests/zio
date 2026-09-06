@@ -3,7 +3,7 @@ name: CI
 env:
   # The one variable that separates the arms: on baseline, action-checkout
   # skips its Set up Chalk step entirely.
-  CHALK_ON: ${{ github.event_name == 'workflow_dispatch' && inputs.leg != 'baseline' }}
+  CHALK_ON: ${{ inputs.leg == 'instrumented' }}
   JDK_JAVA_OPTIONS: -XX:+PrintCommandLineFlags -Xms2G -Xmx8G -Xss4M -XX:+UseG1GC -XX:ReservedCodeCacheSize=512M -XX:NonProfiledCodeHeapSize=256M # JDK_JAVA_OPTIONS is _the_ env. variable to use for modern Java
   SBT_OPTS: -XX:+PrintCommandLineFlags -Xms2G -Xmx8G -Xss4M -XX:+UseG1GC -XX:ReservedCodeCacheSize=512M -XX:NonProfiledCodeHeapSize=256M # Needed for sbt
   NODE_OPTIONS: --max_old_space_size=6144
@@ -35,7 +35,7 @@ on:
     types: [update-docs]
 
 concurrency:
-  group: ci-pr-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}-${{ inputs.leg || 'push' }}-${{ inputs.racecar_run }}
+  group: ci-pr-${{ 'push' == 'pull_request' && github.event.pull_request.number || github.ref }}-${{ inputs.leg || 'push' }}-${{ inputs.racecar_run }}
   cancel-in-progress: false
 
 permissions:
@@ -48,7 +48,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: ${{ ((github.event_name != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
+    if: ${{ (('push' != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
     steps:
     - name: Checkout current branch
       uses: crashappsec/action-checkout@main
@@ -57,7 +57,7 @@ jobs:
         profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
         observables_continue_on_error: false
         lfs: false
-        ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+        ref: ${{ 'push' == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
     - name: Assert instrumentation is live
       if: env.CHALK_ON == 'true'
       run: |
@@ -80,7 +80,7 @@ jobs:
   publishLocal:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: ${{ ((github.event_name != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
+    if: ${{ (('push' != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
     env:
       CI_RELEASE_MODE: 1 # Needed to enable optimizers
     strategy:
@@ -95,7 +95,7 @@ jobs:
           profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
           observables_continue_on_error: false
           lfs: false
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+          ref: ${{ 'push' == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
       - name: Assert instrumentation is live
         if: env.CHALK_ON == 'true'
@@ -129,7 +129,7 @@ jobs:
 
   build-website:
     runs-on: ubuntu-latest
-    if: ${{ ((github.event_name != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
+    if: ${{ (('push' != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
     steps:
       - name: Checkout Current Branch
         uses: crashappsec/action-checkout@main
@@ -138,7 +138,7 @@ jobs:
           profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
           observables_continue_on_error: false
           lfs: false
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+          ref: ${{ 'push' == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
           fetch-depth: 0
       - name: Assert instrumentation is live
         if: env.CHALK_ON == 'true'
@@ -181,11 +181,11 @@ jobs:
           overwrite: true
 
       - name: Save PR Metadata
-        if: github.event_name == 'pull_request'
+        if: ${{ 'push' == 'pull_request' }}
         run: echo "${{ github.event.pull_request.number }}" > pr-number.txt
 
       - name: Upload PR Metadata
-        if: github.event_name == 'pull_request'
+        if: ${{ 'push' == 'pull_request' }}
         uses: actions/upload-artifact@v7
         with:
           name: pr-metadata
@@ -198,7 +198,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: ${{ ((github.event_name != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
+    if: ${{ (('push' != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -213,7 +213,7 @@ jobs:
         profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
         observables_continue_on_error: false
         lfs: false
-        ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+        ref: ${{ 'push' == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
     - name: Assert instrumentation is live
       if: env.CHALK_ON == 'true'
       run: |
@@ -271,7 +271,7 @@ jobs:
   testJvms:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: ${{ ((github.event_name != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
+    if: ${{ (('push' != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
     env:
       CI_RELEASE_MODE: 1 # Run these tests with optimizations enabled
     strategy:
@@ -286,7 +286,7 @@ jobs:
           profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
           observables_continue_on_error: false
           lfs: false
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+          ref: ${{ 'push' == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
       - name: Assert instrumentation is live
         if: env.CHALK_ON == 'true'
         run: |
@@ -316,7 +316,7 @@ jobs:
   testPlatforms:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: ${{ ((github.event_name != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
+    if: ${{ (('push' != 'repository_dispatch') && (github.event.action != 'update-docs')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -330,7 +330,7 @@ jobs:
           profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
           observables_continue_on_error: false
           lfs: false
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+          ref: ${{ 'push' == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
       - name: Assert instrumentation is live
         if: env.CHALK_ON == 'true'
         run: |
@@ -370,7 +370,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: [ci]
-    if: github.event_name != 'pull_request'
+    if: ${{ 'push' != 'pull_request' }}
     steps:
       - name: Checkout current branch
         uses: crashappsec/action-checkout@main
@@ -405,7 +405,7 @@ jobs:
 
   publish-website:
     needs: [ci]
-    if: github.event_name != 'pull_request'
+    if: ${{ 'push' != 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -435,7 +435,7 @@ jobs:
 
   update-docs:
     runs-on: ubuntu-latest
-    if: ${{ ((github.event_name == 'repository_dispatch') && (github.event.action == 'update-docs')) }}
+    if: ${{ (('push' == 'repository_dispatch') && (github.event.action == 'update-docs')) }}
     steps:
       - name: Git Checkout
         uses: crashappsec/action-checkout@main
